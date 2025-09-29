@@ -1,0 +1,66 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+body {
+  margin: 0;
+  font-family: 'cursive', sans-serif;
+  background-color: #f5f5f5;
+}
+
+#root {
+  padding: 0px;
+  @apply bg-gradient-to-br from-blue-100 to-purple-200;
+}
+.fc-timegrid-axis {
+  background-color: #c4b5fd; /* purple-300 */
+}
+
+/* header red s danima */
+.fc-col-header {
+  background-color: #c4b5fd; /* purple-300 */
+}
+
+/* gitter između sidebar-a i dana */
+.fc-scroller-harness {
+  background-color: #f0f0f0; /* isto kao root bg ili gradient fallback */
+}
+
+.fc .fc-button-primary {
+  background-color: #a78bfa !important; /* purple-400 */
+  border: none !important;
+  color: white !important;
+}
+
+.fc .fc-button-primary:hover {
+  background-color: #8b5cf6 !important; /* purple-500 */
+}
+
+/* Svi FullCalendar buttons */
+.fc .fc-button {
+  border: none !important;
+  border-radius: 1.5rem !important; /* rounded-3xl */
+  padding: 6px 14px !important;
+  font-size: 14px !important;
+  font-weight: 500 !important;
+  margin: 0 4px !important; /* razmak između buttona */
+  transition: background-color 0.2s ease, box-shadow 0.2s ease !important;
+}
+
+/* Default state */
+.fc .fc-button {
+  background-color: #a78bfa !important; /* purple-400 */
+  color: #fff !important;
+}
+
+/* Hover state */
+.fc .fc-button:hover {
+  background-color: #8b5cf6 !important; /* purple-500 */
+}
+
+/* Active (selected) state */
+.fc .fc-button.fc-button-active {
+  background-color: #6d28d9 !important; /* purple-700 */
+  box-shadow: 0 2px 6px rgba(0,0,0,0.2) !important;
+}
+
