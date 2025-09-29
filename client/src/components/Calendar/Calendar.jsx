@@ -171,32 +171,23 @@ const parseServerDate = (serverDateString) => {
 useEffect(() => {
   socket.connect();
 
-  socket.on('calendar-updated', (eventData) => {
-    console.log('Primljen novi/ažuriran event:', eventData);
-
-    const newEv = {
-      id: eventData._id,
-      title: eventData.title,
-      start: parseServerDate(eventData.startTime),
-      end: parseServerDate(eventData.endTime),
-      backgroundColor: userColorMap[eventData.createdBy] || '#000',
-      borderColor: userColorMap[eventData.createdBy] || '#000',
-      textColor: 'white',
-      extendedProps: { 
-        description: eventData.description || '', 
-        userId: eventData.createdBy 
-      }
-    };
-
-    setEvents(prev => {
-      const exists = prev.find(e => e.id === eventData._id);
-      if (exists) {
-        return prev.map(e => e.id === eventData._id ? newEv : e);
-      } else {
-        return [...prev, newEv];
-      }
-    });
+ socket.on('calendar-updated', (eventData) => {
+  const color = colorMap[eventData.createdBy] || '#000'; // koristi lokalni colorMap, ne state
+  const newEv = {
+    id: eventData._id,
+    title: eventData.title,
+    start: parseServerDate(eventData.startTime),
+    end: parseServerDate(eventData.endTime),
+    backgroundColor: color,
+    borderColor: color,
+    textColor: 'white',
+    extendedProps: { description: eventData.description || '', userId: eventData.createdBy }
+  };
+  setEvents(prev => {
+    const exists = prev.find(e => e.id === eventData._id);
+    return exists ? prev.map(e => e.id === eventData._id ? newEv : e) : [...prev, newEv];
   });
+});
 
   socket.on('event-removed', (eventId) => {
     console.log('Event obrisan:', eventId);
