@@ -3,6 +3,7 @@ import FullCalendar from '@fullcalendar/react';
 import dayGridPlugin from '@fullcalendar/daygrid';
 import timeGridPlugin from '@fullcalendar/timegrid';
 import interactionPlugin from '@fullcalendar/interaction';
+import { socket } from '../../socket';
 
 const availableColors = [
   '#3B82F6', '#10B981', '#F59E0B', '#8B5CF6', '#EC4899',
@@ -37,11 +38,12 @@ const Calendar = () => {
     'July', 'August', 'September', 'October', 'November', 'December'
   ];
 
-  const parseServerDate = (serverDateString) => {
+const parseServerDate = (serverDateString) => {
     const serverDate = new Date(serverDateString);
-    const offsetMinutes = serverDate.getTimezoneOffset();
-    return new Date(serverDate.getTime() + offsetMinutes * 60000);
-  };
+    const offsetMinutes = serverDate.getTimezoneOffset(); // npr. -120 minuta za CEST
+    // Pomicanje datuma unazad za offset "poništava" automatski pomak
+    return new Date(serverDate.getTime() + offsetMinutes * 60000); 
+};
 
   const generateYears = () => {
     const currentYearValue = new Date().getFullYear();
@@ -166,6 +168,48 @@ const Calendar = () => {
   fetchData();
 }, []);
 
+useEffect(() => {
+  socket.connect();
+
+  socket.on('calendar-updated', (eventData) => {
+    console.log('Primljen novi/ažuriran event:', eventData);
+
+    const newEv = {
+      id: eventData._id,
+      title: eventData.title,
+      start: parseServerDate(eventData.startTime),
+      end: parseServerDate(eventData.endTime),
+      backgroundColor: userColorMap[eventData.createdBy] || '#000',
+      borderColor: userColorMap[eventData.createdBy] || '#000',
+      textColor: 'white',
+      extendedProps: { 
+        description: eventData.description || '', 
+        userId: eventData.createdBy 
+      }
+    };
+
+    setEvents(prev => {
+      const exists = prev.find(e => e.id === eventData._id);
+      if (exists) {
+        return prev.map(e => e.id === eventData._id ? newEv : e);
+      } else {
+        return [...prev, newEv];
+      }
+    });
+  });
+
+  socket.on('event-removed', (eventId) => {
+    console.log('Event obrisan:', eventId);
+    setEvents(prev => prev.filter(e => e.id !== eventId));
+  });
+
+  return () => {
+    socket.off('calendar-updated');
+    socket.off('event-removed');
+    socket.disconnect();
+  };
+}, [userColorMap]);
+
 
   const openAddEventModal = (dateObj) => {
     const dayStr = dateObj.toISOString().split('T')[0];
@@ -184,14 +228,33 @@ const Calendar = () => {
     setOverlayOpen(true);
   };
 
-  const handleSaveEvent = async () => {
+ const handleSaveEvent = async () => {
     if (!currentUser || !newEventTitle.trim()) return;
     const token = localStorage.getItem('token');
     if (!token) return;
 
     const [year, month, day] = selectedDate.split('-').map(Number);
-    const startDate = new Date(year, month - 1, day + 1, Number(newEventStartHour), Number(newEventStartMinute));
-    const endDate = new Date(year, month - 1, day + 1, Number(newEventEndHour), Number(newEventEndMinute));
+    
+    // 🛠️ POPRAVAK: Ponovno dodan 'day + 1' za rješavanje problema s danom.
+    // Time se kompenzira FullCalendar/JavaScript obrada datuma koja se primjenjivala ranije.
+    const correctedDay = day + 1; 
+
+    // Korištenje Date.UTC za stvaranje datuma s lokalnim satima
+    const startDate = new Date(Date.UTC(
+        year, 
+        month - 1, 
+        correctedDay, // <-- Korigirani dan (+ 1)
+        Number(newEventStartHour), 
+        Number(newEventStartMinute)
+    ));
+
+    const endDate = new Date(Date.UTC(
+        year, 
+        month - 1, 
+        correctedDay, // <-- Korigirani dan (+ 1)
+        Number(newEventEndHour), 
+        Number(newEventEndMinute)
+    ));
     
     try {
         const res = await fetch('http://localhost:5000/api/events', {
@@ -200,7 +263,8 @@ const Calendar = () => {
             body: JSON.stringify({
                 title: newEventTitle,
                 description: newEventDesc,
-                startTime: startDate.toISOString(),
+                // Ispravno vrijeme i dan (zbog correctedDay) se šalju na server kao UTC
+                startTime: startDate.toISOString(), 
                 endTime: endDate.toISOString(),
                 createdBy: currentUser
             })
@@ -209,11 +273,12 @@ const Calendar = () => {
         if (!res.ok) throw new Error('Failed to save event');
         const savedEvent = await res.json();
 
+        // Korištenje parseServerDate za konzistentan prikaz FullCalendar objekta
         const newEv = {
             id: savedEvent._id,
             title: savedEvent.title,
-            start: startDate,
-            end: endDate,
+            start: parseServerDate(savedEvent.startTime), 
+            end: parseServerDate(savedEvent.endTime),     
             backgroundColor: userColorMap[currentUser] || '#000',
             borderColor: userColorMap[currentUser] || '#000',
             textColor: 'white',
@@ -221,6 +286,10 @@ const Calendar = () => {
         };
 
         setEvents(prev => [...prev, newEv]);
+        
+        // Obavijesti druge korisnike
+        socket.emit('event-added', savedEvent);
+        
         setModalOpen(false);
         setNewEventTitle('');
         setNewEventDesc('');
@@ -229,8 +298,7 @@ const Calendar = () => {
         alert('Failed to save event: ' + err.message);
     }
 };
-
-  const handleUpdateEvent = async () => {
+const handleUpdateEvent = async () => {
     if (!editingEvent) return;
     const token = localStorage.getItem('token');
     if (!token) return;
@@ -262,13 +330,16 @@ const Calendar = () => {
         extendedProps: { ...ev.extendedProps, description: updatedEvent.description }
       } : ev));
 
+      // ← DODAJ OVO: Obavijesti druge korisnike
+      socket.emit('event-updated', updatedEvent);
+
       setEditingEvent(null);
     } catch (err) {
       alert(err.message);
     }
   };
 
-  const handleDeleteEvent = async () => {
+const handleDeleteEvent = async () => {
     if (!editingEvent) return;
     const token = localStorage.getItem('token');
 
@@ -278,7 +349,12 @@ const Calendar = () => {
         headers: { Authorization: `Bearer ${token}` }
       });
       if (!res.ok) throw new Error('Failed to delete event');
+      
       setEvents(prev => prev.filter(ev => ev.id !== editingEvent.id));
+      
+      // ← DODAJ OVO: Obavijesti druge korisnike
+      socket.emit('event-deleted', editingEvent.id);
+      
       setEditingEvent(null);
     } catch (err) {
       alert(err.message);
