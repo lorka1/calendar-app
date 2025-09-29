@@ -170,21 +170,9 @@ const Calendar = () => {
 
         // --- HOLIDAYS
         const holidaysRes = await fetch(`${API_BASE}/api/holidays`, {
-          headers: { Authorization: `Bearer ${token}` }
-        });
-        const holidaysDataRaw = await holidaysRes.json();
-
-        // map holidays to consistent format (osiguravamo isHoliday flag)
-        const holidaysData = (Array.isArray(holidaysDataRaw) ? holidaysDataRaw : []).map(h => ({
-          id: h._id || `${h.date || h.start}-holiday`,
-          title: h.title || h.name || 'Holiday',
-          start: parseServerDate(h.date || h.start),
-          allDay: true,
-          backgroundColor: '#e11d48',
-          borderColor: '#e11d48',
-          textColor: 'white',
-          extendedProps: { isHoliday: true, description: h.description || '' }
-        }));
+  headers: { Authorization: `Bearer ${token}` }
+});
+        const holidaysData = await holidaysRes.json();
 
         // dodaj blagdane
         const allEvents = [...validEvents, ...holidaysData];
