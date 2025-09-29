@@ -106,22 +106,22 @@ const Profile = () => {
     const formData = new FormData();
     formData.append('profileImage', file);
 
-    try {
-      const res = await fetch(`${BASE_URL}/api/users/${user._id}/profile-image`, {
-        method: 'PATCH',
-        headers: { Authorization: `Bearer ${token}` }, // NE stavljaj Content-Type!
-        body: formData
-      });
+  try {
+  const res = await fetch(`${BASE_URL}/api/users/${user._id}/profile-image`, {
+    method: 'PATCH',
+    headers: { Authorization: `Bearer ${token}` }, // NE stavljaj Content-Type!
+    body: formData
+  });
 
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.message || 'Failed to upload image');
-
-      setProfileImage(data.profileImage);
-      updateUser(data);
-    } catch (err) {
-      console.error(err);
-      alert(err.message);
-    }
+  const data = await res.json(); // <-- prvo ovo
+  if (!res.ok) throw new Error(data.message || 'Failed to upload image');
+    console.log("Backend response:", data);
+  setProfileImage(data.profileImage);
+  updateUser(data);
+} catch (err) {
+  console.error(err);
+  alert(err.message);
+}
   };
 
   return (
@@ -145,14 +145,11 @@ const Profile = () => {
             <div className="w-16 h-16 rounded-full overflow-hidden border-2 border-gray-300">
               {profileImage ? (
                 <img
-                  src={
-                    profileImage.startsWith('http')
-                      ? profileImage
-                      : `${BASE_URL}/${profileImage.replace(/^\/+/, '')}`
-                  }
-                  alt="Profile"
-                  className="w-full h-full object-cover"
-                />
+  src={`${BASE_URL}${profileImage}`} 
+  alt="Profile"
+  className="w-full h-full object-cover"
+/>
+
               ) : (
                 <div className="w-full h-full flex items-center justify-center bg-gray-200 text-gray-500">
                   <User className="w-8 h-8" />
