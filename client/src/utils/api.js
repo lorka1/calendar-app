@@ -87,7 +87,6 @@ console.log('Login attempt:', email, password);
 
 
 
-// Ako želiš axios helper za lakše API pozive
 import axios from 'axios';
 const api = axios.create({
   baseURL: BASE_URL,
