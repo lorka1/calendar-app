@@ -9,7 +9,7 @@ import {
   createEvent,
   updateEvent,
   deleteEvent
-} from '../../utils/api'; // <- tvoj helper file
+} from '../../utils/api';
 
 const API_BASE = process.env.REACT_APP_API_URL || "http://localhost:5000";
 
