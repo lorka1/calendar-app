@@ -111,44 +111,41 @@ const Calendar = () => {
         const usersData = await usersRes.json();
         setAllUsers(usersData);
 
-        const colorMap = {};
-        usersData.forEach((u, idx) => {
-          colorMap[u._id.toString()] = availableColors[idx % availableColors.length];
-        });
-        setUserColorMap(colorMap);
+       const colorMap = {};
+usersData.forEach((u, idx) => {
+  colorMap[u._id.toString()] = availableColors[idx % availableColors.length];
+});
 
-        // --- EVENTS
-        const eventsData = await fetchEvents();
+// --- EVENTS
+const eventsData = await fetchEvents();
 
-        const oneWeekAgo = new Date();
-        oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
+const validEvents = [];
+for (const ev of eventsData) {
+  const endDate = new Date(ev.endTime);
 
-        const validEvents = [];
-        for (const ev of eventsData) {
-          const endDate = new Date(ev.endTime);
+  if (endDate >= oneWeekAgo) {
+    let userId = null;
+    if (ev.createdBy) {
+      userId = ev.createdBy._id ? ev.createdBy._id.toString() : ev.createdBy.toString();
+    }
 
-          if (endDate < oneWeekAgo) {
-            await deleteEvent(ev._id).catch(console.error);
-          } else {
-            let userId = null;
-            if (ev.createdBy) {
-              userId = ev.createdBy._id ? ev.createdBy._id.toString() : ev.createdBy.toString();
-            }
+    const color = userId ? colorMap[userId] || '#000' : '#888'; // <--- koristi lokalnu varijablu
 
-            const color = userId ? userColorMap[userId] || '#000' : '#888';
+    validEvents.push({
+      id: ev._id,
+      title: ev.title,
+      start: parseServerDate(ev.startTime),
+      end: parseServerDate(ev.endTime),
+      backgroundColor: color,
+      borderColor: color,
+      textColor: 'white',
+      extendedProps: { description: ev.description || '', userId }
+    });
+  }
+}
 
-            validEvents.push({
-              id: ev._id,
-              title: ev.title,
-              start: parseServerDate(ev.startTime),
-              end: parseServerDate(ev.endTime),
-              backgroundColor: color,
-              borderColor: color,
-              textColor: 'white',
-              extendedProps: { description: ev.description || '', userId }
-            });
-          }
-        }
+setUserColorMap(colorMap);
+setEvents([...validEvents, ...holidaysData]);
 
         // --- HOLIDAYS
         const holidaysRes = await fetch('http://localhost:5000/api/holidays', {
