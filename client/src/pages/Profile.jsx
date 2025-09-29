@@ -2,6 +2,8 @@ import React, { useState, useContext } from 'react';
 import { User, Edit2, LogOut, Save, X } from 'lucide-react';
 import { AuthContext } from '../context/AuthContext';
 
+const BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000';
+
 const Profile = () => {
   const { user, updateUser, logout } = useContext(AuthContext);
   const [newUsername, setNewUsername] = useState('');
@@ -26,11 +28,13 @@ const Profile = () => {
 
     setIsLoading(true);
     try {
-      const res = await fetch(`http://localhost:5000/api/users/${user._id}`, {
+      // Promjena username
+      const res = await fetch(`${BASE_URL}/api/users/${user._id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
         body: JSON.stringify({ username: newUsername })
       });
+
       const data = await res.json();
       if (!res.ok) throw new Error(data.message || 'Failed to update username');
       updateUser(data);
@@ -56,7 +60,7 @@ const Profile = () => {
     if (!token) return alert('You are not logged in!');
 
     try {
-      const res = await fetch(`http://localhost:5000/api/users/${user._id}/change-password`, {
+      const res = await fetch(`${BASE_URL}/api/users/${user._id}/change-password`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
         body: JSON.stringify({ password: newPassword })
@@ -78,7 +82,7 @@ const Profile = () => {
     if (!token) return alert('You are not logged in!');
 
     try {
-      const res = await fetch(`http://localhost:5000/api/users/${user._id}`, {
+      const res = await fetch(`${BASE_URL}/api/users/${user._id}`, {
         method: 'DELETE',
         headers: { Authorization: `Bearer ${token}` }
       });
@@ -103,9 +107,9 @@ const Profile = () => {
     formData.append('profileImage', file);
 
     try {
-      const res = await fetch(`http://localhost:5000/api/users/${user._id}/profile-image`, {
+      const res = await fetch(`${BASE_URL}/api/users/${user._id}/profile-image`, {
         method: 'PATCH',
-        headers: { Authorization: `Bearer ${token}` },
+        headers: { Authorization: `Bearer ${token}` }, // NE stavljaj Content-Type!
         body: formData
       });
 
@@ -144,7 +148,7 @@ const Profile = () => {
                   src={
                     profileImage.startsWith('http')
                       ? profileImage
-                      : `http://localhost:5000/${profileImage.replace(/^\/+/, '')}`
+                      : `${BASE_URL}/${profileImage.replace(/^\/+/, '')}`
                   }
                   alt="Profile"
                   className="w-full h-full object-cover"
