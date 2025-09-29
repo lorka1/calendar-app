@@ -4,13 +4,12 @@ import dayGridPlugin from '@fullcalendar/daygrid';
 import timeGridPlugin from '@fullcalendar/timegrid';
 import interactionPlugin from '@fullcalendar/interaction';
 import { socket } from '../../socket';
-import React, { useEffect, useState } from 'react';
 import { 
   fetchEvents, 
   createEvent, 
   updateEvent, 
   deleteEvent 
-} from './api'; // <- tvoj helper file
+} from '../../utils/api'; // <- tvoj helper file
 
 const availableColors = [
   '#3B82F6', '#10B981', '#F59E0B', '#8B5CF6', '#EC4899',
