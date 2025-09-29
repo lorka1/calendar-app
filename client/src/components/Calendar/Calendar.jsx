@@ -11,10 +11,23 @@ import {
   deleteEvent
 } from '../../utils/api'; // <- tvoj helper file
 
+const API_BASE = process.env.REACT_APP_API_URL || "http://localhost:5000";
+
 const availableColors = [
   '#3B82F6', '#10B981', '#F59E0B', '#8B5CF6', '#EC4899',
   '#06B6D4', '#84CC16', '#D97706', '#F43F5E', '#6366F1'
 ];
+
+// --- helper: uvijek vrati string ID ili null ---
+const extractUserId = (createdBy) => {
+  if (!createdBy) return null;
+  if (typeof createdBy === 'object') {
+    if (createdBy._id) return createdBy._id.toString();
+    // ako je objekt ali nema _id, pokušaj JSON stringify fallback
+    try { return createdBy.toString(); } catch { return null; }
+  }
+  return createdBy.toString();
+};
 
 const Calendar = () => {
   const [events, setEvents] = useState([]);
@@ -45,9 +58,9 @@ const Calendar = () => {
   ];
 
   const parseServerDate = (serverDateString) => {
+    if (!serverDateString) return null;
     const serverDate = new Date(serverDateString);
-    const offsetMinutes = serverDate.getTimezoneOffset(); // npr. -120 minuta za CEST
-    // Pomicanje datuma unazad za offset "poništava" automatski pomak
+    const offsetMinutes = serverDate.getTimezoneOffset();
     return new Date(serverDate.getTime() + offsetMinutes * 60000);
   };
 
@@ -85,9 +98,11 @@ const Calendar = () => {
     if (month !== currentMonth) setCurrentMonth(month);
   };
 
-  // Helper function to get username by userId
+  // Helper function to get username by userId (robustan - prihvaća i objekt ili string)
   const getUsernameById = (userId) => {
-    const user = allUsers.find(u => u._id.toString() === userId);
+    const idStr = extractUserId(userId);
+    if (!idStr) return 'Unknown user';
+    const user = allUsers.find(u => u._id.toString() === idStr);
     return user ? user.username : 'Unknown user';
   };
 
@@ -98,60 +113,78 @@ const Calendar = () => {
 
       const savedUser = localStorage.getItem('currentUser');
       if (savedUser) {
-        const u = JSON.parse(savedUser);
-        setCurrentUser(u.id || u._id);
-        setCurrentUsername(u.username);
+        try {
+          const u = JSON.parse(savedUser);
+          const idStr = (u.id || u._id) ? (u.id || u._id).toString() : '';
+          setCurrentUser(idStr);
+          setCurrentUsername(u.username || '');
+        } catch (e) {
+          console.warn('Could not parse saved currentUser', e);
+        }
       }
 
       try {
         // --- USERS
-        const usersRes = await fetch('http://localhost:5000/api/users', {
+        const usersRes = await fetch(`${API_BASE}/api/users`, {
           headers: { Authorization: `Bearer ${token}` }
         });
+        if (!usersRes.ok) throw new Error('Failed to fetch users');
         const usersData = await usersRes.json();
         setAllUsers(usersData);
 
-       const colorMap = {};
-usersData.forEach((u, idx) => {
-  colorMap[u._id.toString()] = availableColors[idx % availableColors.length];
-});
+        // build colorMap locally and set state
+        const colorMap = {};
+        usersData.forEach((u, idx) => {
+          colorMap[u._id.toString()] = availableColors[idx % availableColors.length];
+        });
+        setUserColorMap(colorMap);
 
-// --- EVENTS
-const eventsData = await fetchEvents();
+        // --- EVENTS
+        const eventsData = await fetchEvents();
 
-const validEvents = [];
-for (const ev of eventsData) {
-  const endDate = new Date(ev.endTime);
+        const oneWeekAgo = new Date();
+        oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
 
-  if (endDate >= oneWeekAgo) {
-    let userId = null;
-    if (ev.createdBy) {
-      userId = ev.createdBy._id ? ev.createdBy._id.toString() : ev.createdBy.toString();
-    }
+        const validEvents = [];
+        for (const ev of eventsData) {
+          const endDate = new Date(ev.endTime);
 
-    const color = userId ? colorMap[userId] || '#000' : '#888'; // <--- koristi lokalnu varijablu
+          if (endDate < oneWeekAgo) {
+            await deleteEvent(ev._id).catch(console.error);
+          } else {
+            const userId = extractUserId(ev.createdBy);
+            const color = userId ? (colorMap[userId] || '#000') : '#888';
 
-    validEvents.push({
-      id: ev._id,
-      title: ev.title,
-      start: parseServerDate(ev.startTime),
-      end: parseServerDate(ev.endTime),
-      backgroundColor: color,
-      borderColor: color,
-      textColor: 'white',
-      extendedProps: { description: ev.description || '', userId }
-    });
-  }
-}
-
-setUserColorMap(colorMap);
-setEvents([...validEvents, ...holidaysData]);
+            validEvents.push({
+              id: ev._id,
+              title: ev.title,
+              start: parseServerDate(ev.startTime),
+              end: parseServerDate(ev.endTime),
+              backgroundColor: color,
+              borderColor: color,
+              textColor: 'white',
+              extendedProps: { description: ev.description || '', userId }
+            });
+          }
+        }
 
         // --- HOLIDAYS
-        const holidaysRes = await fetch('http://localhost:5000/api/holidays', {
+        const holidaysRes = await fetch(`${API_BASE}/api/holidays`, {
           headers: { Authorization: `Bearer ${token}` }
         });
-        const holidaysData = await holidaysRes.json();
+        const holidaysDataRaw = await holidaysRes.json();
+
+        // map holidays to consistent format (osiguravamo isHoliday flag)
+        const holidaysData = (Array.isArray(holidaysDataRaw) ? holidaysDataRaw : []).map(h => ({
+          id: h._id || `${h.date || h.start}-holiday`,
+          title: h.title || h.name || 'Holiday',
+          start: parseServerDate(h.date || h.start),
+          allDay: true,
+          backgroundColor: '#e11d48',
+          borderColor: '#e11d48',
+          textColor: 'white',
+          extendedProps: { isHoliday: true, description: h.description || '' }
+        }));
 
         // dodaj blagdane
         const allEvents = [...validEvents, ...holidaysData];
@@ -169,7 +202,7 @@ setEvents([...validEvents, ...holidaysData]);
     socket.connect();
 
     socket.on('calendar-updated', (eventData) => {
-      const userId = eventData.createdBy._id ? eventData.createdBy._id.toString() : eventData.createdBy.toString();
+      const userId = extractUserId(eventData.createdBy);
       const color = userColorMap[userId] || '#000';
       const newEv = {
         id: eventData._id,
@@ -179,7 +212,7 @@ setEvents([...validEvents, ...holidaysData]);
         backgroundColor: color,
         borderColor: color,
         textColor: 'white',
-        extendedProps: { description: eventData.description || '', userId: eventData.createdBy }
+        extendedProps: { description: eventData.description || '', userId }
       };
       setEvents(prev => {
         const exists = prev.find(e => e.id === eventData._id);
@@ -224,15 +257,13 @@ setEvents([...validEvents, ...holidaysData]);
 
     const [year, month, day] = selectedDate.split('-').map(Number);
 
-    // 🛠️ POPRAVAK: Ponovno dodan 'day + 1' za rješavanje problema s danom.
-    // Time se kompenzira FullCalendar/JavaScript obrada datuma koja se primjenjivala ranije.
+    // zadržan tvoj korigirani dan (ako ti je to rješenje za timezone problem)
     const correctedDay = day + 1;
 
-    // Korištenje Date.UTC za stvaranje datuma s lokalnim satima
     const startDate = new Date(Date.UTC(
       year,
       month - 1,
-      correctedDay, // <-- Korigirani dan (+ 1)
+      correctedDay,
       Number(newEventStartHour),
       Number(newEventStartMinute)
     ));
@@ -240,7 +271,7 @@ setEvents([...validEvents, ...holidaysData]);
     const endDate = new Date(Date.UTC(
       year,
       month - 1,
-      correctedDay, // <-- Korigirani dan (+ 1)
+      correctedDay,
       Number(newEventEndHour),
       Number(newEventEndMinute)
     ));
@@ -253,10 +284,10 @@ setEvents([...validEvents, ...holidaysData]);
         endTime: endDate.toISOString(),
         createdBy: currentUser
       });
-      const userId = currentUser.toString(); // osiguraj da je string
+
+      const userId = extractUserId(savedEvent.createdBy || currentUser);
       const color = userColorMap[userId] || '#000';
 
-      // Korištenje parseServerDate za konzistentan prikaz FullCalendar objekta
       const newEv = {
         id: savedEvent._id,
         title: savedEvent.title,
@@ -267,13 +298,13 @@ setEvents([...validEvents, ...holidaysData]);
         textColor: 'white',
         extendedProps: {
           description: savedEvent.description || '',
-          userId: savedEvent.createdBy
+          userId
         }
       };
 
       setEvents(prev => [...prev, newEv]);
 
-      // Obavijesti druge korisnike
+      // Obavijesti druge korisnike (server bi trebao emitati 'calendar-updated' natrag)
       socket.emit('event-added', savedEvent);
 
       setModalOpen(false);
@@ -281,7 +312,7 @@ setEvents([...validEvents, ...holidaysData]);
       setNewEventDesc('');
     } catch (err) {
       console.error(err);
-      alert('Failed to save event: ' + err.message);
+      alert('Failed to save event: ' + (err.message || err));
     }
   };
   const handleUpdateEvent = async () => {
@@ -313,12 +344,11 @@ setEvents([...validEvents, ...holidaysData]);
           : ev
       ));
 
-      // ← DODAJ OVO: Obavijesti druge korisnike
       socket.emit('event-updated', updatedEvent);
 
       setEditingEvent(null);
     } catch (err) {
-      alert(err.message);
+      alert(err.message || err);
     }
   };
 
@@ -333,7 +363,7 @@ setEvents([...validEvents, ...holidaysData]);
       socket.emit('event-deleted', editingEvent.id);
       setEditingEvent(null);
     } catch (err) {
-      alert(err.message);
+      alert(err.message || err);
     }
   };
 
@@ -522,7 +552,7 @@ setEvents([...validEvents, ...holidaysData]);
                 backgroundColor: info.event.backgroundColor,
                 textColor: info.event.textColor,
                 description: info.event.extendedProps.description,
-                userId: info.event.extendedProps.userId,
+                userId: extractUserId(info.event.extendedProps.userId),
               });
             }}
 
