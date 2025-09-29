@@ -18,7 +18,7 @@ const availableColors = [
   '#06B6D4', '#84CC16', '#D97706', '#F43F5E', '#6366F1'
 ];
 
-// --- helper: uvijek vrati string ID ili null ---
+
 const extractUserId = (createdBy) => {
   if (!createdBy) return null;
   if (typeof createdBy === 'object') {
@@ -98,7 +98,6 @@ const Calendar = () => {
     if (month !== currentMonth) setCurrentMonth(month);
   };
 
-  // Helper function to get username by userId (robustan - prihvaća i objekt ili string)
   const getUsernameById = (userId) => {
     const idStr = extractUserId(userId);
     if (!idStr) return 'Unknown user';
@@ -132,7 +131,7 @@ const Calendar = () => {
         const usersData = await usersRes.json();
         setAllUsers(usersData);
 
-        // build colorMap locally and set state
+        
         const colorMap = {};
         usersData.forEach((u, idx) => {
           colorMap[u._id.toString()] = availableColors[idx % availableColors.length];
@@ -292,7 +291,7 @@ const Calendar = () => {
 
       setEvents(prev => [...prev, newEv]);
 
-      // Obavijesti druge korisnike (server bi trebao emitati 'calendar-updated' natrag)
+      
       socket.emit('event-added', savedEvent);
 
       setModalOpen(false);
@@ -356,7 +355,6 @@ const Calendar = () => {
   };
 
   const renderEventContent = (eventInfo) => {
-    // ako je holiday → samo title, bez vremena
     if (eventInfo.event.extendedProps.isHoliday) {
       return (
         <div
@@ -529,7 +527,7 @@ const Calendar = () => {
             eventClick={(info) => {
               if (info.event.extendedProps.isHoliday) {
                 info.jsEvent.preventDefault();
-                return; // spriječi bilo kakvu akciju
+                return;
               }
               // normalni event edit
               setEditingEvent({
@@ -567,7 +565,7 @@ const Calendar = () => {
 
               info.el.style.position = 'relative';
 
-              // 📌 dodaj "+" samo za današnji ili buduće dane
+              
               const today = new Date();
               today.setHours(0, 0, 0, 0);
               const cellDate = new Date(info.date);
