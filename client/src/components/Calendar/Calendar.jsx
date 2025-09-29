@@ -4,6 +4,13 @@ import dayGridPlugin from '@fullcalendar/daygrid';
 import timeGridPlugin from '@fullcalendar/timegrid';
 import interactionPlugin from '@fullcalendar/interaction';
 import { socket } from '../../socket';
+import React, { useEffect, useState } from 'react';
+import { 
+  fetchEvents, 
+  createEvent, 
+  updateEvent, 
+  deleteEvent 
+} from './api'; // <- tvoj helper file
 
 const availableColors = [
   '#3B82F6', '#10B981', '#F59E0B', '#8B5CF6', '#EC4899',
@@ -112,10 +119,7 @@ const parseServerDate = (serverDateString) => {
       setUserColorMap(colorMap);
 
       // --- EVENTS
-      const eventsRes = await fetch('http://localhost:5000/api/events', {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      const eventsData = await eventsRes.json();
+      const eventsData = await fetchEvents();
 
       const oneWeekAgo = new Date();
       oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
@@ -125,10 +129,7 @@ const parseServerDate = (serverDateString) => {
         const endDate = new Date(ev.endTime);
 
         if (endDate < oneWeekAgo) {
-          await fetch(`http://localhost:5000/api/events/${ev._id}`, {
-            method: 'DELETE',
-            headers: { Authorization: `Bearer ${token}` }
-          }).catch(console.error);
+          await deleteEvent(ev._id).catch(console.error);
         } else {
           let userId = null;
           if (ev.createdBy) {
@@ -257,42 +258,37 @@ useEffect(() => {
     ));
     
     try {
-        const res = await fetch('http://localhost:5000/api/events', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-            body: JSON.stringify({
-                title: newEventTitle,
-                description: newEventDesc,
-                // Ispravno vrijeme i dan (zbog correctedDay) se šalju na server kao UTC
-                startTime: startDate.toISOString(), 
-                endTime: endDate.toISOString(),
-                createdBy: currentUser
-            })
-        });
+        const savedEvent = await createEvent({
+    title: newEventTitle,
+    description: newEventDesc,
+    startTime: startDate.toISOString(), 
+    endTime: endDate.toISOString(),
+    createdBy: currentUser
+  });
 
-        if (!res.ok) throw new Error('Failed to save event');
-        const savedEvent = await res.json();
+  // Korištenje parseServerDate za konzistentan prikaz FullCalendar objekta
+  const newEv = {
+    id: savedEvent._id,
+    title: savedEvent.title,
+    start: parseServerDate(savedEvent.startTime), 
+    end: parseServerDate(savedEvent.endTime),     
+    backgroundColor: userColorMap[currentUser] || '#000',
+    borderColor: userColorMap[currentUser] || '#000',
+    textColor: 'white',
+    extendedProps: { 
+      description: savedEvent.description || '', 
+      userId: savedEvent.createdBy 
+    }
+  };
 
-        // Korištenje parseServerDate za konzistentan prikaz FullCalendar objekta
-        const newEv = {
-            id: savedEvent._id,
-            title: savedEvent.title,
-            start: parseServerDate(savedEvent.startTime), 
-            end: parseServerDate(savedEvent.endTime),     
-            backgroundColor: userColorMap[currentUser] || '#000',
-            borderColor: userColorMap[currentUser] || '#000',
-            textColor: 'white',
-            extendedProps: { description: savedEvent.description || '', userId: savedEvent.createdBy }
-        };
+  setEvents(prev => [...prev, newEv]);
 
-        setEvents(prev => [...prev, newEv]);
-        
-        // Obavijesti druge korisnike
-        socket.emit('event-added', savedEvent);
-        
-        setModalOpen(false);
-        setNewEventTitle('');
-        setNewEventDesc('');
+  // Obavijesti druge korisnike
+  socket.emit('event-added', savedEvent);
+
+  setModalOpen(false);
+  setNewEventTitle('');
+  setNewEventDesc('');
     } catch (err) {
         console.error(err);
         alert('Failed to save event: ' + err.message);
@@ -308,27 +304,24 @@ const handleUpdateEvent = async () => {
     const adjustedEnd = new Date(editingEvent.end.getTime() - offsetMinutes * 60000);
 
     try {
-      const res = await fetch(`http://localhost:5000/api/events/${editingEvent.id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({
-          title: editingEvent.title,
-          description: editingEvent.description,
-          startTime: adjustedStart.toISOString(),
-          endTime: adjustedEnd.toISOString()
-        })
-      });
+      const updatedEvent = await updateEvent(editingEvent.id, {
+    title: editingEvent.title,
+    description: editingEvent.description,
+    startTime: adjustedStart.toISOString(),
+    endTime: adjustedEnd.toISOString()
+  });
 
-      if (!res.ok) throw new Error('Failed to save event');
-      const updatedEvent = await res.json();
-
-      setEvents(prev => prev.map(ev => ev.id === updatedEvent._id ? {
-        ...ev,
-        title: updatedEvent.title,
-        start: editingEvent.start,
-        end: editingEvent.end,
-        extendedProps: { ...ev.extendedProps, description: updatedEvent.description }
-      } : ev));
+  setEvents(prev => prev.map(ev =>
+    ev.id === updatedEvent._id
+      ? {
+          ...ev,
+          title: updatedEvent.title,
+          start: editingEvent.start,
+          end: editingEvent.end,
+          extendedProps: { ...ev.extendedProps, description: updatedEvent.description }
+        }
+      : ev
+  ));
 
       // ← DODAJ OVO: Obavijesti druge korisnike
       socket.emit('event-updated', updatedEvent);
@@ -344,18 +337,11 @@ const handleDeleteEvent = async () => {
     const token = localStorage.getItem('token');
 
     try {
-      const res = await fetch(`http://localhost:5000/api/events/${editingEvent.id}`, {
-        method: 'DELETE',
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      if (!res.ok) throw new Error('Failed to delete event');
-      
-      setEvents(prev => prev.filter(ev => ev.id !== editingEvent.id));
-      
-      // ← DODAJ OVO: Obavijesti druge korisnike
-      socket.emit('event-deleted', editingEvent.id);
-      
-      setEditingEvent(null);
+      await deleteEvent(editingEvent.id);
+
+  setEvents(prev => prev.filter(ev => ev.id !== editingEvent.id));
+  socket.emit('event-deleted', editingEvent.id);
+  setEditingEvent(null);
     } catch (err) {
       alert(err.message);
     }
